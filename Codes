@@ -1,0 +1,7 @@
+TV SAMSUNG:
+ - Power On/OFF: http://192.168.1.198/ir?code=3772793023
+ - Volume +: http://192.168.1.198/ir?code=3772833823
+ - Volume -: http://192.168.1.198/ir?code=3772829743
+ - Mute: http://192.168.1.198/ir?code=3772837903
+ - Source: http://192.168.1.198/ir?code=3772809343
+ 
