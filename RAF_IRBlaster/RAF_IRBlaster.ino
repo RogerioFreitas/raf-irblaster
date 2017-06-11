@@ -1,25 +1,86 @@
-/*
- * IRremoteESP8266: IRServer - demonstrates sending IR codes controlled from a webserver
- * An IR LED must be connected to ESP8266 pin 0.
- * Version 0.1 June, 2015
- */
-#include <FS.h>                   //this needs to be first, or it all crashes and burns...
 #include <ESP8266WiFi.h>
 #include <WiFiClient.h>
 #include <ESP8266WebServer.h>
-#include <ESP8266mDNS.h>
+#include <DNSServer.h>
+#include <WiFiManager.h>
 #include <IRremoteESP8266.h>
+#include <Ticker.h>
 
-const char* ssid = "Full4it";
-const char* password = "2505116928roger";
-MDNSResponder mdns;
+//#ifdef ARDUINO_ESP8266_ESP01
+//  #define DEBUG false
+//#else
+//  #define DEBUG true
+//#endif
+
+bool debug = false; // :(
+
+Ticker ticker;
 
 ESP8266WebServer server(80);
+WiFiManager wifiManager;
 
 IRsend irsend(3);
 
+void setup(void) {
+  pinMode(BUILTIN_LED, OUTPUT);
+  ticker.attach(0.1, tick);
+  
+  if (debug) {
+    Serial.begin(9600);
+    Serial.println("Hello :D");
+  }
+
+  wifiManager.setDebugOutput(debug);
+  wifiManager.setConfigPortalTimeout(120);
+  //wifiManager.autoConnect("IrBlaster");
+
+  //for some reason that I can't understood why at my home, I only have sucess to connect to wifi AP using the code below :(
+
+  if (!wifiManager.autoConnect("IrBlaster")) {
+    //Serial.println("failed to connect, we should reset as see if it connects");
+    delay(3000);
+    ESP.reset();
+    delay(5000);
+  }
+
+  ticker.attach(0.5, tick);  
+
+  irsend.begin();
+
+  if (debug) {
+    Serial.println("");
+    Serial.print("Connected to ");
+    Serial.println(WiFi.SSID());
+    Serial.print("IP address: ");
+    Serial.println(WiFi.localIP());
+  }
+
+  ticker.attach(1, tick);  
+
+  server.on("/", handleRoot);
+  server.on("/ir", handleIr);
+
+  server.on("/inline", []() {
+    server.send(200, "text/plain", "this works as well");
+  });
+
+  server.on("/reset", []() {
+    server.send(200, "text/plain", "Rebooting in config mode");
+    wifiManager.resetSettings();
+    ESP.reset();
+  });
+
+  server.onNotFound(handleNotFound);
+
+  server.begin();
+
+  ticker.detach();
+  digitalWrite(BUILTIN_LED, HIGH);
+}
+
+
 void handleRoot() {
- server.send(200, "text/html", "<html><head> <title>ESP8266 Demo</title></head><body><h1>Hello from ESP8266, you can send NEC encoded IR signals from here!</h1><p><a href=\"ir?code=16769055\">Send 0xFFE01F</a></p><p><a href=\"ir?code=16429347\">Send 0xFAB123</a></p><p><a href=\"ir?code=16771222\">Send 0xFFE896</a></p></body></html>");
+  server.send(200, "text/html", "<html><head> <title>IR Blaster</title></head><body><center><h1>IR BLASTER!</h1><br/><img src=\"https://i.giphy.com/3oEduGi1UWg9Q6nF84.webp\" width=\"100%\"</center></body></html>");
 }
 
 //+=============================================================================
@@ -49,115 +110,115 @@ unsigned long HexToLongInt(String h)
   return tmp;
 }
 
-
 //+=============================================================================
 // Send IR codes to variety of sources
 //
-
-void handleIr(){
-  String type;
-  unsigned long code; 
-  int len;
-  int address;
-  type.toLowerCase();
-  //long data = HexToLongInt(code);
-  
-  for (uint8_t i=0; i<server.args(); i++){
-   if(server.argName(i) == "code"){
-      unsigned long code = strtoul(server.arg(i).c_str(), NULL, 10);
-     // long code = HexToLongInt(code);
-   }
-   if(server.argName(i) == "type"){
-      String type = server.arg(i);
-   }
-   if(server.argName(i) == "len"){
-      int len = atoi(server.arg(i).c_str());
-   }
-   if(server.argName(i) == "address"){
-   int address = atoi(server.arg(i).c_str());
-   }
-          if(type == "nec") {
-                irsend.sendNEC(code, len, 0);
-          }else if(type == "sony") {
-                irsend.sendSony(code, len);
-          }else if(type ==  "coolix") {
-                irsend.sendCOOLIX(code, len);
-          }else if(type == "whynter"){
-                irsend.sendWhynter(code, len);
-          }else if(type == "panasonic") {
-                irsend.sendPanasonic(address, code);
-          }else if(type == "jvc") {
-                irsend.sendJVC(code, len, 0);
-          }else if (type == "samsumg") {
-                irsend.sendSAMSUNG(code, len);
-                 server.send(200, "text/html", "<html><head> <title>Samsumg</title></head>");
-          }else if (type == "sharp") {
-                irsend.sendSharpRaw(code, len);
-          }else if (type == "dish") {
-                irsend.sendDISH(code, len);
-          }else if (type == "rc5") {
-                irsend.sendRC5(code, len);
-          }else if (type == "rc6") {
-                irsend.sendRC6(code, len);
-          } else {  // necessário definir um else default :o)
-             // irsend.sendSAMSUNG(code, 32);
-          }   
-      
-      //}
-   // }
+void handleIr() {
+  if (server.args() == 0) {
+    server.send(200, "application/json", "{}");
+    return;
   }
-  handleRoot();
+
+  String type = "";
+  unsigned long code = 0;
+  int len = 0;
+  int address = 0;
+  type.toLowerCase();
+
+  for (uint8_t i = 0; i < server.args(); i++) {
+    if (server.argName(i)  == "code") {
+      String strCode = server.arg(i);
+      strCode.toLowerCase();
+      if (strCode.startsWith("0x")) {
+        code = HexToLongInt(strCode.substring(2));
+      } else {
+        code = strtoul(strCode.c_str(), NULL, 10);
+      }
+    } else if (server.argName(i) == "type") {
+      type = server.arg(i);
+    } else if (server.argName(i) == "len") {
+      len = atoi(server.arg(i).c_str());
+    } else if (server.argName(i) == "address") {
+      address = atoi(server.arg(i).c_str());
+    }
+  }
+
+  if (debug) {
+    Serial.print("Type: ");
+    Serial.println(type);
+    Serial.print("Code: ");
+    Serial.println(code);
+    Serial.print("Len: ");
+    Serial.println(len);
+    Serial.print("Address: ");
+    Serial.println(address);
+  }
+
+  for (int r = 0; r <= 3; r++) {
+    if (type == "nec") {
+      if (len == 0)
+        len = 32;
+      irsend.sendNEC(code, len, 0);
+    } else if (type == "sony") {
+      if (len == 0)
+        len = 12;
+      irsend.sendSony(code, len);
+    } else if (type ==  "coolix") {
+      irsend.sendCOOLIX(code, len);
+    } else if (type == "whynter") {
+      irsend.sendWhynter(code, len);
+    } else if (type == "panasonic") {
+      irsend.sendPanasonic(address, code);
+    } else if (type == "jvc") {
+      irsend.sendJVC(code, len, 0);
+    } else if (type == "samsung") {
+      if (len ==0)
+        len = 32;
+      irsend.sendSAMSUNG(code, len);
+    } else if (type == "sharp") {
+      irsend.sendSharpRaw(code, len);
+    } else if (type == "dish") {
+      irsend.sendDISH(code, len);
+    } else if (type == "rc5") {
+      irsend.sendRC5(code, len);
+    } else if (type == "rc6") {
+      irsend.sendRC6(code, len);
+    } else {
+      server.send(400, "application/json", "{\"error\": \"unknown type " + type + "\"}");
+      return;
+    }
+  }
+
+  String json = "{\"status\": \"OK\"";
+  for (uint8_t i = 0; i < server.args(); i++) {
+    json += ", \"" + server.argName(i) + "\": \"" + server.arg(i) + "\"";
+  }
+  json += "}";
+  server.send(404, "text/plain", json);
+
 }
 
 
-void handleNotFound(){
+void handleNotFound() {
   String message = "File Not Found\n\n";
   message += "URI: ";
   message += server.uri();
   message += "\nMethod: ";
-  message += (server.method() == HTTP_GET)?"GET":"POST";
+  message += (server.method() == HTTP_GET) ? "GET" : "POST";
   message += "\nArguments: ";
   message += server.args();
   message += "\n";
-  for (uint8_t i=0; i<server.args(); i++){
+  for (uint8_t i = 0; i < server.args(); i++) {
     message += " " + server.argName(i) + ": " + server.arg(i) + "\n";
   }
   server.send(404, "text/plain", message);
 }
- 
-void setup(void){  
-  irsend.begin();
-  
-//  Serial.begin(115200);
-  WiFi.begin(ssid, password);
-//  Serial.println("");
 
-  // Wait for connection
-  while (WiFi.status() != WL_CONNECTED) {
-    delay(500);
-//    Serial.print(".");
-  }
-//  Serial.println("");
-//  Serial.print("Connected to ");
-//  Serial.println(ssid);
-//  Serial.print("IP address: ");
-//  Serial.println(WiFi.localIP());
-  
-  if (mdns.begin("esp8266", WiFi.localIP())) {
-//    Serial.println("MDNS responder started");
-  }
-  
-  server.on("/", handleRoot);
-  server.on("/ir", handleIr); 
- 
-  server.on("/inline", [](){server.send(200, "text/plain", "this works as well");});
-
-  server.onNotFound(handleNotFound);
-  
-  server.begin();
-//  Serial.println("HTTP server started");
+void tick() {
+  int state = digitalRead(BUILTIN_LED);  // get the current state of GPIO1 pin
+  digitalWrite(BUILTIN_LED, !state);     // set pin to the opposite state
 }
- 
-void loop(void){
+
+void loop(void) {
   server.handleClient();
-} 
+}
