@@ -6,11 +6,19 @@
 #include <IRremoteESP8266.h>
 #include <Ticker.h>
 
+<<<<<<< HEAD
 //#ifdef ARDUINO_ESP8266_ESP01
 //  #define DEBUG false
 //#else
 //  #define DEBUG true
 //#endif
+=======
+#ifdef ARDUINO_ESP8266_ESP01
+  #define DEBUG false
+#else
+  #define DEBUG true
+#endif
+>>>>>>> origin/develop
 
 bool debug = false; // :(
 
@@ -32,6 +40,7 @@ void setup(void) {
 
   wifiManager.setDebugOutput(debug);
   wifiManager.setConfigPortalTimeout(120);
+<<<<<<< HEAD
   //wifiManager.autoConnect("IrBlaster");
 
   //for some reason that I can't understood why at my home, I only have sucess to connect to wifi AP using the code below :(
@@ -42,6 +51,9 @@ void setup(void) {
     ESP.reset();
     delay(5000);
   }
+=======
+  wifiManager.autoConnect("IrBlaster");
+>>>>>>> origin/develop
 
   ticker.attach(0.5, tick);  
 
@@ -171,9 +183,13 @@ void handleIr() {
       irsend.sendPanasonic(address, code);
     } else if (type == "jvc") {
       irsend.sendJVC(code, len, 0);
+<<<<<<< HEAD
     } else if (type == "samsung") {
       if (len ==0)
         len = 32;
+=======
+    } else if (type == "samsumg") {
+>>>>>>> origin/develop
       irsend.sendSAMSUNG(code, len);
     } else if (type == "sharp") {
       irsend.sendSharpRaw(code, len);
@@ -187,12 +203,21 @@ void handleIr() {
       server.send(400, "application/json", "{\"error\": \"unknown type " + type + "\"}");
       return;
     }
+<<<<<<< HEAD
   }
 
   String json = "{\"status\": \"OK\"";
   for (uint8_t i = 0; i < server.args(); i++) {
     json += ", \"" + server.argName(i) + "\": \"" + server.arg(i) + "\"";
   }
+=======
+  }
+
+  String json = "{\"status\": \"OK\"";
+  for (uint8_t i = 0; i < server.args(); i++) {
+    json += ", \"" + server.argName(i) + "\": \"" + server.arg(i) + "\"";
+  }
+>>>>>>> origin/develop
   json += "}";
   server.send(404, "text/plain", json);
 
@@ -222,3 +247,7 @@ void tick() {
 void loop(void) {
   server.handleClient();
 }
+<<<<<<< HEAD
+=======
+
+>>>>>>> origin/develop
